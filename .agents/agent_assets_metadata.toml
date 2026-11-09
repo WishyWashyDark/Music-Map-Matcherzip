@@ -14,3 +14,17 @@ mtime_ms = 1794207333898
 storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:f2fbbd67-a7f6-4bae-9af7-b54549a3ce0c/300a7723-c1cd-4549-9262-88104b31357b/bdc777c2-977f-4c76-b495-f6173575f6e0"
 storage_version_token = "1794207369666293"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "1CVaFrsR1YDvrQNOECjP-"
+uri = "file://artifacts/beatmatch/public/sample-artist-matches-library.xml"
+type = "unspecified"
+title = "BeatMatch artist-match sample library"
+description = "Apple Music XML sample with one exact BeatSaver match and one synthetic same-artist track for testing artist-only results."
+logical_id = "8fd06149-c0c0-49e9-aa87-0f4a7f222d7a"
+content_hash = "sha256:d5e856d51c90153cb7354057240e81fcd91a4108b8c41e6dabf32d3d69d2f3ff"
+size = 1284
+mtime_ms = 1794210040371
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:f2fbbd67-a7f6-4bae-9af7-b54549a3ce0c/8fd06149-c0c0-49e9-aa87-0f4a7f222d7a/8b7e892d-4987-4889-8ac3-4221b5bddda0"
+storage_version_token = "1794210271502634"
+content_type = "application/octet-stream"

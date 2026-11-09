@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Major Version</key>
+  <integer>1</integer>
+  <key>Minor Version</key>
+  <integer>1</integer>
+  <key>Application Version</key>
+  <string>1.0</string>
+  <key>Tracks</key>
+  <dict>
+    <key>2001</key>
+    <dict>
+      <key>Track ID</key>
+      <integer>2001</integer>
+      <key>Name</key>
+      <string>Blinding Lights</string>
+      <key>Artist</key>
+      <string>The Weeknd</string>
+      <key>Album</key>
+      <string>After Hours</string>
+      <key>Genre</key>
+      <string>Synth-pop</string>
+      <key>Track Number</key>
+      <integer>9</integer>
+      <key>Track Type</key>
+      <string>File</string>
+    </dict>
+    <key>2002</key>
+    <dict>
+      <key>Track ID</key>
+      <integer>2002</integer>
+      <key>Name</key>
+      <string>BeatMatch Test Track</string>
+      <key>Artist</key>
+      <string>The Weeknd</string>
+      <key>Album</key>
+      <string>Sample Tracks</string>
+      <key>Genre</key>
+      <string>Demo</string>
+      <key>Track Number</key>
+      <integer>1</integer>
+      <key>Track Type</key>
+      <string>File</string>
+    </dict>
+  </dict>
+</dict>
+</plist>

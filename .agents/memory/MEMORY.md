@@ -1,0 +1,1 @@
+- [BeatSaver pagination](beatsaver-pagination.md) — use `info.total` with the requested page size; `info.pages` may reflect the default size.

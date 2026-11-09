@@ -28,13 +28,6 @@ export type BeatMap = {
   }>;
 };
 
-export type TrackMatch = {
-  track: ImportedTrack;
-  map?: BeatMap;
-  confidence: number;
-  status: 'matched' | 'uncertain' | 'missing';
-};
-
 const DIFFICULTY_NAMES: Record<string, string> = {
   easy: 'Easy',
   normal: 'Normal',
@@ -62,10 +55,18 @@ export function getMapRatingPercent(map: BeatMap): number | undefined {
   return Math.max(0, Math.min(100, percent));
 }
 
-function normalize(value: string) {
+export function normalizeLibraryText(value: string) {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
     .replace(/\b(feat|ft|featuring)\b\.?/g, ' ')
     .replace(/[^a-z0-9]+/g, ' ').trim().replace(/\s+/g, ' ');
+}
+
+export function getImportedTrackKey(track: ImportedTrack) {
+  return `${normalizeLibraryText(track.title)}\u0000${normalizeLibraryText(track.artist)}`;
+}
+
+export function getBeatMapTrackKey(map: BeatMap) {
+  return `${normalizeLibraryText(map.metadata?.songName ?? '')}\u0000${normalizeLibraryText(map.metadata?.songAuthorName ?? '')}`;
 }
 
 function parseCsv(text: string): string[][] {
@@ -112,7 +113,7 @@ export function parseLibrary(text: string, fileName: string): ImportedTrack[] {
   } else {
     const rows = parseCsv(text);
     if (!rows.length) throw new Error('This CSV is empty.');
-    const header = rows[0].map(cell => normalize(cell));
+    const header = rows[0].map(cell => normalizeLibraryText(cell));
     const titleIndex = header.findIndex(item => ['title', 'song', 'track', 'name'].includes(item));
     const artistIndex = header.findIndex(item => ['artist', 'song artist', 'performer'].includes(item));
     if (titleIndex < 0 || artistIndex < 0) throw new Error('CSV needs column headers named title and artist.');
@@ -125,44 +126,62 @@ export function parseLibrary(text: string, fileName: string): ImportedTrack[] {
   }
   const seen = new Set<string>();
   return tracks.filter(track => {
-    const key = `${normalize(track.title)}|${normalize(track.artist)}`;
+    const key = getImportedTrackKey(track);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
 }
 
-function similarity(a: string, b: string) {
-  if (!a || !b) return 0;
-  if (a === b) return 1;
-  if (a.includes(b) || b.includes(a)) return Math.min(a.length, b.length) / Math.max(a.length, b.length) * 0.2 + 0.78;
-  const left = a.split(' ');
-  const right = b.split(' ');
-  const overlap = left.filter(token => right.includes(token)).length;
-  const tokenScore = (2 * overlap) / (left.length + right.length || 1);
-  const matrix = Array.from({ length: a.length + 1 }, (_, i) => [i]);
-  for (let j = 0; j <= b.length; j++) matrix[0][j] = j;
-  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) {
-    matrix[i][j] = Math.min(matrix[i - 1][j] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
-  }
-  const editScore = 1 - matrix[a.length][b.length] / Math.max(a.length, b.length);
-  return Math.max(tokenScore, editScore * 0.72 + tokenScore * 0.28);
-}
+type BeatSaverSearchResponse = {
+  docs?: BeatMap[];
+  info?: { total?: number };
+};
 
-export function rankMap(track: ImportedTrack, maps: BeatMap[]): TrackMatch {
-  const title = normalize(track.title);
-  const artist = normalize(track.artist);
-  const ranked = maps.map(map => {
-    const song = normalize(map.metadata?.songName || map.name || '');
-    const author = normalize(map.metadata?.songAuthorName || '');
-    const titleScore = similarity(title, song);
-    const artistScore = similarity(artist, author);
-    return { map, score: titleScore * 0.72 + artistScore * 0.28, titleScore, artistScore };
-  }).sort((a, b) => b.score - a.score);
-  const best = ranked[0];
-  if (!best || best.titleScore < 0.47 || best.score < 0.52) return { track, confidence: best?.score ?? 0, status: 'missing' };
-  const confidence = Math.round(best.score * 100);
-  if (best.titleScore >= 0.76 && best.score >= 0.78) return { track, map: best.map, confidence, status: 'matched' };
-  return { track, map: best.map, confidence, status: 'uncertain' };
+export async function searchArtistMaps(
+  artist: string,
+  shouldContinue: () => boolean,
+  onProgress: (page: number, totalPages: number) => void,
+): Promise<BeatMap[]> {
+  const pageSize = 100;
+  const artistKey = normalizeLibraryText(artist);
+  const maps = new Map<string, BeatMap>();
+  let totalPages = 1;
+
+  for (let page = 0; page < totalPages; page++) {
+    if (!shouldContinue()) return [];
+    const params = new URLSearchParams({ q: artist, pageSize: String(pageSize) });
+    const response = await fetch(`https://api.beatsaver.com/search/text/${page}?${params}`, {
+      headers: { Accept: 'application/json' },
+    });
+    if (response.status === 429) {
+      throw new Error('BeatSaver is rate-limiting searches right now (429). Your completed artist results are safe.');
+    }
+    if (!response.ok) throw new Error(`BeatSaver returned a network error (${response.status}).`);
+
+    const body = await response.json() as BeatSaverSearchResponse;
+    if (!shouldContinue()) return [];
+    const docs = Array.isArray(body.docs) ? body.docs : [];
+    if (page === 0) {
+      const total = Number(body.info?.total);
+      totalPages = Number.isFinite(total) && total > 0
+        ? Math.ceil(total / pageSize)
+        : docs.length >= pageSize ? 2 : 1;
+    }
+    if (docs.length < pageSize) totalPages = page + 1;
+    onProgress(page + 1, totalPages);
+
+    for (const map of docs) {
+      if (normalizeLibraryText(map.metadata?.songAuthorName ?? '') === artistKey) {
+        maps.set(map.id, map);
+      }
+    }
+
+    if (page + 1 < totalPages) {
+      await new Promise(resolve => window.setTimeout(resolve, 420));
+    }
+  }
+
+  return Array.from(maps.values());
 }
 
