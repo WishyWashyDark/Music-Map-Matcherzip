@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "A1K3rUnBS5OrsFzKcHzFy"
+uri = "file://artifacts/beatmatch/public/sample-apple-music-library.xml"
+type = "unspecified"
+title = "Sample Apple Music library"
+description = "A six-track synthetic XML library with familiar songs and one demo track. Upload it to BeatMatch to test XML import and map matching."
+logical_id = "300a7723-c1cd-4549-9262-88104b31357b"
+content_hash = "sha256:9c4004c7a03a38cfa546b61425b1ddb4cfa739792e8c6a0f45a299fe5bed921a"
+size = 3085
+mtime_ms = 1794207333898
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:f2fbbd67-a7f6-4bae-9af7-b54549a3ce0c/300a7723-c1cd-4549-9262-88104b31357b/bdc777c2-977f-4c76-b495-f6173575f6e0"
+storage_version_token = "1794207369666293"
+content_type = "application/octet-stream"
