@@ -24,6 +24,7 @@ export type BeatMap = {
     hash?: string;
     state?: string;
     createdAt?: string;
+    downloadURL?: string;
     diffs?: Array<{ difficulty?: string; characteristic?: string }>;
   }>;
 };

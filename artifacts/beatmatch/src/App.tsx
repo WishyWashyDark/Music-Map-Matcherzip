@@ -287,19 +287,30 @@ function Home() {
                   const result = matchByTrack.get(`${track.title}\u0000${track.artist}`);
                   const matched = result?.status === 'matched';
                   const uncertain = result?.status === 'uncertain';
-                  const mapName = result?.map?.metadata.songName || result?.map?.name;
+                  const map = result?.map;
+                  const mapName = map?.metadata.songName || map?.name;
+                  const ratingPercent = map ? getMapRatingPercent(map) : undefined;
+                  const downloadUrl = map?.versions?.find(version => version.downloadURL)?.downloadURL;
                   return <div className="track-row" key={`${track.title}-${track.artist}-${index}`} data-testid={`row-track-${index}`}>
-                    <div className="track-main"><div className="track-title" title={track.title}>{track.title}</div><div className="track-artist">{track.artist}{track.album ? ` · ${track.album}` : ''}</div></div>
-                    <div className="track-main">{mapName && result?.map ? <>
-                      <a className="map-title" href={`https://beatsaver.com/maps/${result.map.id}`} target="_blank" rel="noreferrer" data-testid={`link-map-${index}`}>{mapName} <ArrowUpRight size={10} style={{ display: 'inline' }} /></a>
-                      <div className="map-by">{result.map.metadata.songAuthorName || 'Artist not listed'} · mapped by {result.map.metadata.levelAuthorName || 'community'}</div>
-                      <div className="map-facts">
-                        {getMapRatingPercent(result.map) !== undefined && <span>{Math.round(getMapRatingPercent(result.map)!)}% rating</span>}
-                        {getMapDifficulties(result.map).map(difficulty => <span key={difficulty}>{difficulty === 'ExpertPlus' ? 'Expert+' : difficulty}</span>)}
-                        {(result.map.tags ?? []).slice(0, 2).map(tag => <span key={tag}>{formatMapTag(tag)}</span>)}
+                    <div className="track-main track-cell">
+                      <div className="track-title" title={track.title}>{track.title}</div>
+                      <div className="track-artist">{track.artist}{track.album ? ` · ${track.album}` : ''}</div>
+                      {track.sourceId && <div className="track-id">Song ID <code>{track.sourceId}</code></div>}
+                    </div>
+                    <div className="track-main map-cell">{mapName && map ? <>
+                      <a className="map-title" href={`https://beatsaver.com/maps/${map.id}`} target="_blank" rel="noreferrer" data-testid={`link-map-${index}`}>{mapName} <ArrowUpRight size={10} style={{ display: 'inline' }} /></a>
+                      <div className="map-by">{map.metadata.songAuthorName || 'Artist not listed'} · mapped by {map.metadata.levelAuthorName || 'community'}</div>
+                      <div className="map-facts" aria-label="Map rating, difficulties, and tags">
+                        {ratingPercent !== undefined && <span className="rating-fact">Rating {Math.round(ratingPercent)}%</span>}
+                        {getMapDifficulties(map).map(difficulty => <span className="difficulty-fact" key={difficulty}>{difficulty === 'ExpertPlus' ? 'Expert+' : difficulty}</span>)}
+                        {(map.tags ?? []).slice(0, 2).map(tag => <span className="genre-fact" key={tag}>{formatMapTag(tag)}</span>)}
+                      </div>
+                      <div className="map-actions">
+                        <span className="map-id"><span>Map ID</span><code>{map.id}</code></span>
+                        {downloadUrl && <a className="map-download-link" href={downloadUrl} target="_blank" rel="noopener noreferrer" data-testid={`link-download-map-${index}`}><Download size={12} /> Download map</a>}
                       </div>
                     </> : <span className="map-by">{result ? 'No close map found' : scanning ? 'Waiting in queue…' : 'Not checked yet'}</span>}</div>
-                    <div>{result ? matched ? <span className="status-pill matched"><Check size={10} /> Strong match</span> : uncertain ? <span className="status-pill uncertain"><Sparkles size={10} /> Maybe <span className="confidence">{result.confidence}%</span></span> : <span className="status-pill missing">No map found</span> : <span className="status-pill missing">Queued</span>}</div>
+                    <div className="status-cell">{result ? matched ? <span className="status-pill matched"><Check size={10} /> Strong match</span> : uncertain ? <span className="status-pill uncertain"><Sparkles size={10} /> Maybe <span className="confidence">{result.confidence}%</span></span> : <span className="status-pill missing">No map found</span> : <span className="status-pill missing">Queued</span>}</div>
                   </div>;
                 })}</div>
                 {filtered.length < tracks.length && <div className="results-foot"><span>Showing {filtered.length} of {tracks.length} tracks</span><button className="link-button" onClick={() => { setQuery(''); setFilter('all'); }}>Show all tracks</button></div>}
