@@ -5,8 +5,8 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
-import { ArrowUpRight, AudioLines, Check, CircleAlert, FileMusic, Headphones, LockKeyhole, Music2, Search, ShieldCheck, Sparkles, Upload, X } from 'lucide-react';
-import { type BeatMap, type ImportedTrack, type TrackMatch, parseLibrary, rankMap } from '@/lib/library';
+import { ArrowUpRight, AudioLines, Check, ChevronDown, CircleAlert, FileMusic, Headphones, LockKeyhole, Music2, Search, ShieldCheck, SlidersHorizontal, Sparkles, Upload, X } from 'lucide-react';
+import { type BeatMap, type ImportedTrack, type TrackMatch, getMapDifficulties, getMapRatingPercent, parseLibrary, rankMap } from '@/lib/library';
 import {
   Route,
   Switch,
@@ -16,12 +16,43 @@ import {
 
 const queryClient = new QueryClient();
 
+const DIFFICULTY_OPTIONS = [
+  { value: 'Easy', label: 'Easy' },
+  { value: 'Normal', label: 'Normal' },
+  { value: 'Hard', label: 'Hard' },
+  { value: 'Expert', label: 'Expert' },
+  { value: 'ExpertPlus', label: 'Expert+' },
+] as const;
+
+const RATING_OPTIONS = [
+  { value: 'any', label: 'Any rating' },
+  { value: '60', label: '60% or higher' },
+  { value: '70', label: '70% or higher' },
+  { value: '80', label: '80% or higher' },
+  { value: '90', label: '90% or higher' },
+  { value: '95', label: '95% or higher' },
+] as const;
+
+function formatMapTag(tag: string) {
+  const specialLabels: Record<string, string> = {
+    'j-rock': 'J-Rock',
+    'j-pop': 'J-Pop',
+    'k-pop': 'K-Pop',
+    rb: 'R&B',
+  };
+  return specialLabels[tag] ?? tag.split('-').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
+}
+
 function Home() {
   const [tracks, setTracks] = useState<ImportedTrack[]>([]);
   const [fileName, setFileName] = useState('');
   const [matches, setMatches] = useState<TrackMatch[]>([]);
   const [filter, setFilter] = useState<'all' | 'matched' | 'missing'>('all');
   const [query, setQuery] = useState('');
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [includedDifficulties, setIncludedDifficulties] = useState<string[]>([]);
+  const [minimumRating, setMinimumRating] = useState('any');
+  const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
   const [dragging, setDragging] = useState(false);
   const [importError, setImportError] = useState('');
   const [scanError, setScanError] = useState('');
@@ -31,15 +62,32 @@ function Home() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const matchByTrack = useMemo(() => new Map(matches.map(result => [`${result.track.title}\u0000${result.track.artist}`, result] as const)), [matches]);
+  const availableGenres = useMemo(() => Array.from(new Set(matches.flatMap(result => result.map?.tags ?? [])))
+    .sort((a, b) => formatMapTag(a).localeCompare(formatMapTag(b))), [matches]);
+  const hasAdvancedFilters = includedDifficulties.length > 0 || minimumRating !== 'any' || selectedGenres.length > 0;
+  const activeAdvancedFilterCount = Number(includedDifficulties.length > 0) + Number(minimumRating !== 'any') + Number(selectedGenres.length > 0);
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return tracks.filter(track => {
       const result = matchByTrack.get(`${track.title}\u0000${track.artist}`);
       if (filter === 'matched' && result?.status !== 'matched' && result?.status !== 'uncertain') return false;
       if (filter === 'missing' && result?.status !== 'missing') return false;
+      if (hasAdvancedFilters) {
+        const map = result?.map;
+        if (!map) return false;
+        if (includedDifficulties.length > 0) {
+          const mapDifficulties = getMapDifficulties(map);
+          if (!includedDifficulties.some(difficulty => mapDifficulties.includes(difficulty))) return false;
+        }
+        if (minimumRating !== 'any') {
+          const rating = getMapRatingPercent(map);
+          if (rating === undefined || rating < Number(minimumRating)) return false;
+        }
+        if (selectedGenres.length > 0 && !selectedGenres.some(genre => map.tags?.includes(genre))) return false;
+      }
       return !needle || `${track.title} ${track.artist} ${track.album ?? ''} ${result?.map?.metadata.songName ?? ''}`.toLowerCase().includes(needle);
     });
-  }, [filter, matchByTrack, query, tracks]);
+  }, [filter, hasAdvancedFilters, includedDifficulties, matchByTrack, minimumRating, query, selectedGenres, tracks]);
   const matchedCount = matches.filter(item => item.status === 'matched').length;
   const missingCount = matches.filter(item => item.status === 'missing').length;
   const uncertainCount = matches.filter(item => item.status === 'uncertain').length;
@@ -57,6 +105,9 @@ function Home() {
       setTracks(parsed);
       setMatches([]);
       setFileName(file.name);
+      setFilter('all');
+      setQuery('');
+      clearAdvancedFilters();
     } catch (error) {
       setImportError(error instanceof Error ? error.message : 'We could not read that library file.');
     }
@@ -104,7 +155,26 @@ function Home() {
     scanRun.current++;
     setScanning(false); setTracks([]); setMatches([]); setFileName('');
     setScanCurrent(''); setScanError(''); setImportError('');
+    setFilter('all'); setQuery(''); setFiltersOpen(false); clearAdvancedFilters();
     if (fileRef.current) fileRef.current.value = '';
+  }
+
+  function clearAdvancedFilters() {
+    setIncludedDifficulties([]);
+    setMinimumRating('any');
+    setSelectedGenres([]);
+  }
+
+  function toggleDifficulty(difficulty: string) {
+    setIncludedDifficulties(current => current.includes(difficulty)
+      ? current.filter(item => item !== difficulty)
+      : [...current, difficulty]);
+  }
+
+  function toggleGenre(genre: string) {
+    setSelectedGenres(current => current.includes(genre)
+      ? current.filter(item => item !== genre)
+      : [...current, genre]);
   }
 
   return (
@@ -157,10 +227,50 @@ function Home() {
                   {tracks.length > 0 && <button className="ghost-button" onClick={resetLibrary} data-testid="button-reset-library">Clear</button>}
                 </div>
               </div>
-              {tracks.length > 0 && <div className="filter-tabs" role="tablist" aria-label="Filter results">
-                {([['all', `All ${tracks.length}`], ['matched', `Map found ${matchedCount + uncertainCount}`], ['missing', `No match ${missingCount}`]] as const).map(([key, label]) =>
-                  <button key={key} role="tab" aria-selected={filter === key} className={`filter-tab${filter === key ? ' active' : ''}`} onClick={() => setFilter(key)} data-testid={`tab-filter-${key}`}>{label}</button>)}
-              </div>}
+              {tracks.length > 0 && <>
+                <div className="filter-row">
+                  <div className="filter-tabs" role="tablist" aria-label="Filter results">
+                    {([['all', `All ${tracks.length}`], ['matched', `Map found ${matchedCount + uncertainCount}`], ['missing', `No match ${missingCount}`]] as const).map(([key, label]) =>
+                      <button key={key} role="tab" aria-selected={filter === key} className={`filter-tab${filter === key ? ' active' : ''}`} onClick={() => setFilter(key)} data-testid={`tab-filter-${key}`}>{label}</button>)}
+                  </div>
+                  <button className={`refinement-toggle${filtersOpen ? ' is-open' : ''}`} type="button" onClick={() => setFiltersOpen(open => !open)} aria-expanded={filtersOpen} aria-controls="map-refinement-filters" data-testid="button-open-map-filters">
+                    <SlidersHorizontal size={13} /> Filters{activeAdvancedFilterCount > 0 && <span className="filter-count">{activeAdvancedFilterCount}</span>}<ChevronDown size={13} className="filter-chevron" />
+                  </button>
+                </div>
+                {filtersOpen && <div className="refinement-panel" id="map-refinement-filters">
+                  <div className="refinement-group">
+                    <div className="refinement-heading">Included difficulties <span>{includedDifficulties.length ? `${includedDifficulties.length} selected` : 'Any'}</span></div>
+                    <p className="refinement-help">Show maps that include any selected level. Leave all unchecked for any difficulty.</p>
+                    <div className="checkbox-options difficulty-options">
+                      {DIFFICULTY_OPTIONS.map(option => <label className="filter-checkbox" key={option.value}>
+                        <input type="checkbox" checked={includedDifficulties.includes(option.value)} onChange={() => toggleDifficulty(option.value)} />
+                        <span>{option.label}</span>
+                      </label>)}
+                    </div>
+                  </div>
+                  <div className="refinement-group rating-group">
+                    <label className="refinement-heading" htmlFor="minimum-map-rating">Minimum rating</label>
+                    <select id="minimum-map-rating" className="rating-select" value={minimumRating} onChange={event => setMinimumRating(event.target.value)} data-testid="select-minimum-map-rating">
+                      {RATING_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    </select>
+                    <p className="refinement-help">BeatSaver score, shown as a percentage.</p>
+                  </div>
+                  <div className="refinement-group genre-group">
+                    <div className="refinement-heading">Genre / style <span>{selectedGenres.length ? `${selectedGenres.length} selected` : 'Any'}</span></div>
+                    <p className="refinement-help">Choose one or more BeatSaver tags.</p>
+                    {availableGenres.length > 0 ? <div className="checkbox-options genre-options">
+                      {availableGenres.map(genre => <label className="filter-checkbox" key={genre}>
+                        <input type="checkbox" checked={selectedGenres.includes(genre)} onChange={() => toggleGenre(genre)} />
+                        <span>{formatMapTag(genre)}</span>
+                      </label>)}
+                    </div> : <div className="genre-empty">Tags appear as map results are found.</div>}
+                  </div>
+                  <div className="refinement-actions">
+                    <span>Difficulty and genre choices include a map if any selected option matches.</span>
+                    <button className="link-button" type="button" onClick={clearAdvancedFilters} disabled={!hasAdvancedFilters}>Clear filters</button>
+                  </div>
+                </div>}
+              </>}
               {scanning && <div className="scan-banner" role="status" data-testid="status-scan-progress"><span className="scan-spin" /><div className="scan-copy"><strong>Listening through your library</strong><span>Checking {scanCurrent || 'your next track'} · {matches.length} of {tracks.length} complete</span><div className="progress-track"><div className="progress-fill" style={{ width: `${tracks.length ? Math.min(100, matches.length / tracks.length * 100) : 0}%` }} /></div></div><span className="confidence">{tracks.length ? Math.round(matches.length / tracks.length * 100) : 0}%</span></div>}
               {scanError && <div className="alert-box warning" role="alert" data-testid="status-scan-partial"><CircleAlert size={15} /><span>{scanError} {pendingCount > 0 && 'You can continue once the catalog is ready.'}</span></div>}
               {tracks.length === 0 ? <div className="empty-state">
@@ -177,7 +287,15 @@ function Home() {
                   const mapName = result?.map?.metadata.songName || result?.map?.name;
                   return <div className="track-row" key={`${track.title}-${track.artist}-${index}`} data-testid={`row-track-${index}`}>
                     <div className="track-main"><div className="track-title" title={track.title}>{track.title}</div><div className="track-artist">{track.artist}{track.album ? ` · ${track.album}` : ''}</div></div>
-                    <div className="track-main">{mapName ? <><a className="map-title" href={`https://beatsaver.com/maps/${result?.map?.id}`} target="_blank" rel="noreferrer" data-testid={`link-map-${index}`}>{mapName} <ArrowUpRight size={10} style={{ display: 'inline' }} /></a><div className="map-by">{result?.map?.metadata.songAuthorName || 'Artist not listed'} · mapped by {result?.map?.metadata.levelAuthorName || 'community'}</div></> : <span className="map-by">{result ? 'No close map found' : scanning ? 'Waiting in queue…' : 'Not checked yet'}</span>}</div>
+                    <div className="track-main">{mapName && result?.map ? <>
+                      <a className="map-title" href={`https://beatsaver.com/maps/${result.map.id}`} target="_blank" rel="noreferrer" data-testid={`link-map-${index}`}>{mapName} <ArrowUpRight size={10} style={{ display: 'inline' }} /></a>
+                      <div className="map-by">{result.map.metadata.songAuthorName || 'Artist not listed'} · mapped by {result.map.metadata.levelAuthorName || 'community'}</div>
+                      <div className="map-facts">
+                        {getMapRatingPercent(result.map) !== undefined && <span>{Math.round(getMapRatingPercent(result.map)!)}% rating</span>}
+                        {getMapDifficulties(result.map).map(difficulty => <span key={difficulty}>{difficulty === 'ExpertPlus' ? 'Expert+' : difficulty}</span>)}
+                        {(result.map.tags ?? []).slice(0, 2).map(tag => <span key={tag}>{formatMapTag(tag)}</span>)}
+                      </div>
+                    </> : <span className="map-by">{result ? 'No close map found' : scanning ? 'Waiting in queue…' : 'Not checked yet'}</span>}</div>
                     <div>{result ? matched ? <span className="status-pill matched"><Check size={10} /> Strong match</span> : uncertain ? <span className="status-pill uncertain"><Sparkles size={10} /> Maybe <span className="confidence">{result.confidence}%</span></span> : <span className="status-pill missing">No map found</span> : <span className="status-pill missing">Queued</span>}</div>
                   </div>;
                 })}</div>

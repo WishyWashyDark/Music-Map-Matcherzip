@@ -9,8 +9,23 @@ export type BeatMap = {
   id: string;
   name: string;
   metadata: { songName?: string; songAuthorName?: string; levelAuthorName?: string };
-  stats?: { downloads?: number; rating?: number; score?: number; plays?: number };
-  versions?: Array<{ hash?: string; state?: string; createdAt?: string }>;
+  stats?: {
+    downloads?: number;
+    rating?: number;
+    score?: number;
+    scoreOneDP?: number;
+    plays?: number;
+    upvotes?: number;
+    downvotes?: number;
+    sentiment?: string;
+  };
+  tags?: string[];
+  versions?: Array<{
+    hash?: string;
+    state?: string;
+    createdAt?: string;
+    diffs?: Array<{ difficulty?: string; characteristic?: string }>;
+  }>;
 };
 
 export type TrackMatch = {
@@ -19,6 +34,33 @@ export type TrackMatch = {
   confidence: number;
   status: 'matched' | 'uncertain' | 'missing';
 };
+
+const DIFFICULTY_NAMES: Record<string, string> = {
+  easy: 'Easy',
+  normal: 'Normal',
+  hard: 'Hard',
+  expert: 'Expert',
+  expertplus: 'ExpertPlus',
+};
+
+export function getMapDifficulties(map: BeatMap): string[] {
+  const difficulties = new Set<string>();
+  for (const version of map.versions ?? []) {
+    for (const diff of version.diffs ?? []) {
+      const key = diff.difficulty?.toLowerCase().replace(/[^a-z]/g, '');
+      const name = key ? DIFFICULTY_NAMES[key] : undefined;
+      if (name) difficulties.add(name);
+    }
+  }
+  return Array.from(difficulties);
+}
+
+export function getMapRatingPercent(map: BeatMap): number | undefined {
+  const value = map.stats?.score ?? map.stats?.scoreOneDP ?? map.stats?.rating;
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
+  const percent = value >= 0 && value <= 1 ? value * 100 : value;
+  return Math.max(0, Math.min(100, percent));
+}
 
 function normalize(value: string) {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
