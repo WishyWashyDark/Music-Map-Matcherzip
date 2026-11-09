@@ -5,7 +5,7 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
-import { ArrowUpRight, AudioLines, Check, ChevronDown, CircleAlert, FileMusic, Headphones, LockKeyhole, Music2, Search, ShieldCheck, SlidersHorizontal, Sparkles, Upload, X } from 'lucide-react';
+import { ArrowUpRight, AudioLines, Check, ChevronDown, CircleAlert, Download, FileMusic, Headphones, LockKeyhole, Music2, Search, ShieldCheck, SlidersHorizontal, Sparkles, Upload, X } from 'lucide-react';
 import { type BeatMap, type ImportedTrack, type TrackMatch, getMapDifficulties, getMapRatingPercent, parseLibrary, rankMap } from '@/lib/library';
 import {
   Route,
@@ -211,6 +211,9 @@ function Home() {
               {scanning ? <><span className="scan-spin" /> Searching BeatSaver</> : pendingCount === 0 && matches.length ? <><Check size={15} /> Scan complete</> : <><Headphones size={15} /> {matches.length ? `Continue scan · ${pendingCount} left` : 'Find my Beat Saber maps'}<ArrowUpRight size={14} /></>}
             </button>
             <p className="format-help">CSV needs a header row with columns named <b>title</b> and <b>artist</b>. Duplicate tracks are quietly removed.</p>
+            <a className="sample-download-link" href={`${import.meta.env.BASE_URL}sample-apple-music-library.xml`} download="sample-apple-music-library.xml" data-testid="link-download-sample-library">
+              <Download size={13} /> Download sample XML
+            </a>
             {importError && <div className="alert-box error" role="alert" data-testid="status-import-error"><CircleAlert size={15} />{importError}</div>}
           </aside>
           <div className="right-column">

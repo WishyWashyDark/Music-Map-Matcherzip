@@ -424,6 +424,9 @@
 .ghost-button { background:transparent;color:#788079;padding:8px 9px;border-radius:8px;font-size:11px;font-weight:700; }
 .ghost-button:hover { background:#f0eee6;color:#33443f; }
 .format-help { color:#999c94;font-size:10px;line-height:1.55;margin:12px 2px 0; }
+.sample-download-link { display:inline-flex;align-items:center;gap:6px;margin:7px 2px 0;color:#287560;font-size:10px;font-weight:800;text-decoration:none; }
+.sample-download-link:hover {color:#185f52;text-decoration:underline;}
+.sample-download-link:focus-visible {outline:2px solid #77a995;outline-offset:3px;border-radius:3px;}
 .right-column { min-width:0; }
 .stats-strip { display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:#e6e1d6;border:1px solid #e6e1d6;border-radius:15px;overflow:hidden;margin-bottom:15px; }
 .stat-box { background:#fbfaf6;padding:15px 18px; }
