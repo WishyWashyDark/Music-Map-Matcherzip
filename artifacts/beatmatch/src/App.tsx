@@ -295,7 +295,6 @@ function Home() {
                     <div className="track-main track-cell">
                       <div className="track-title" title={track.title}>{track.title}</div>
                       <div className="track-artist">{track.artist}{track.album ? ` · ${track.album}` : ''}</div>
-                      {track.sourceId && <div className="track-id">Song ID <code>{track.sourceId}</code></div>}
                     </div>
                     <div className="track-main map-cell">{mapName && map ? <>
                       <a className="map-title" href={`https://beatsaver.com/maps/${map.id}`} target="_blank" rel="noreferrer" data-testid={`link-map-${index}`}>{mapName} <ArrowUpRight size={10} style={{ display: 'inline' }} /></a>
@@ -306,7 +305,7 @@ function Home() {
                         {(map.tags ?? []).slice(0, 2).map(tag => <span className="genre-fact" key={tag}>{formatMapTag(tag)}</span>)}
                       </div>
                       <div className="map-actions">
-                        <span className="map-id"><span>Map ID</span><code>{map.id}</code></span>
+                        <span className="map-id"><span>BeatSaver ID</span><code>{map.id}</code></span>
                         {downloadUrl && <a className="map-download-link" href={downloadUrl} target="_blank" rel="noopener noreferrer" data-testid={`link-download-map-${index}`}><Download size={12} /> Download map</a>}
                       </div>
                     </> : <span className="map-by">{result ? 'No close map found' : scanning ? 'Waiting in queue…' : 'Not checked yet'}</span>}</div>

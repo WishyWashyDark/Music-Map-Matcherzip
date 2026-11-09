@@ -2,7 +2,6 @@ export type ImportedTrack = {
   title: string;
   artist: string;
   album?: string;
-  sourceId?: string;
 };
 
 export type BeatMap = {
@@ -108,7 +107,7 @@ export function parseLibrary(text: string, fileName: string): ImportedTrack[] {
       }
       const title = values.Name ?? '';
       const artist = values.Artist ?? '';
-      if (title && artist && values['Podcast'] !== 'true') tracks.push({ title, artist, album: values.Album, sourceId: values['Track ID'] });
+      if (title && artist && values['Podcast'] !== 'true') tracks.push({ title, artist, album: values.Album });
     });
   } else {
     const rows = parseCsv(text);
