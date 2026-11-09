@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "BeatMatch"
+description = "A music-to-map finder that imports an Apple Music library export and matches tracks to Beat Saber maps on BeatSaver."
+version = "1.0.0"
+id = "artifacts/beatmatch"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 21970
+
+[services.development]
+run = "pnpm --filter @workspace/beatmatch run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/beatmatch", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/beatmatch/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21970"
+BASE_PATH = "/"
