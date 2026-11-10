@@ -28,3 +28,17 @@ mtime_ms = 1794210040371
 storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:f2fbbd67-a7f6-4bae-9af7-b54549a3ce0c/8fd06149-c0c0-49e9-aa87-0f4a7f222d7a/8b7e892d-4987-4889-8ac3-4221b5bddda0"
 storage_version_token = "1794210271502634"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "HhQ1obRN5-Id-Yn3O7JgU"
+uri = "file://generated-artifacts/beatmatch-domain-upload.zip"
+type = "unspecified"
+title = "BeatMatch – Domain-Upload-Paket"
+description = "Fertiger statischer Website-Build als ZIP, mit deutscher Upload-Anleitung und beiden Apple-Music-XML-Beispieldateien. Für Domain-Stamm oder Unterordner wie /beatmatch/."
+logical_id = "1092d38e-901d-4356-b7de-add1afe63091"
+content_hash = "sha256:c852205825337872a4ee68a7ee81489fcbe6fd8113b67ef6904102e1eb257f05"
+size = 135251
+mtime_ms = 1794288421325
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:f2fbbd67-a7f6-4bae-9af7-b54549a3ce0c/1092d38e-901d-4356-b7de-add1afe63091/ae0b1aac-c7ad-49b7-93db-35f1b8850ae8"
+storage_version_token = "1794288473461108"
+content_type = "application/octet-stream"
