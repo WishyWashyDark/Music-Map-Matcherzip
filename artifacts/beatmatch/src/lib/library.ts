@@ -28,6 +28,24 @@ export type BeatMap = {
   }>;
 };
 
+export type ResultsFilter = 'all' | 'exact' | 'other' | 'missing';
+
+export type SavedSearchFile = {
+  format: 'beatmatch-search';
+  version: 1;
+  savedAt: string;
+  libraryFileName: string;
+  tracks: ImportedTrack[];
+  artistMaps: BeatMap[];
+  scannedArtists: string[];
+  filter: ResultsFilter;
+  query: string;
+  includedDifficulties: string[];
+  minimumRating: string;
+  selectedGenres: string[];
+  selectedMapIds: Record<string, string>;
+};
+
 const DIFFICULTY_NAMES: Record<string, string> = {
   easy: 'Easy',
   normal: 'Normal',
@@ -67,6 +85,95 @@ export function getImportedTrackKey(track: ImportedTrack) {
 
 export function getBeatMapTrackKey(map: BeatMap) {
   return `${normalizeLibraryText(map.metadata?.songName ?? '')}\u0000${normalizeLibraryText(map.metadata?.songAuthorName ?? '')}`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isImportedTrack(value: unknown): value is ImportedTrack {
+  if (!isRecord(value)) return false;
+  return typeof value.title === 'string' && value.title.length > 0
+    && typeof value.artist === 'string' && value.artist.length > 0
+    && (value.album === undefined || typeof value.album === 'string');
+}
+
+function isBeatMap(value: unknown): value is BeatMap {
+  if (!isRecord(value) || typeof value.id !== 'string' || typeof value.name !== 'string' || !isRecord(value.metadata)) return false;
+  for (const field of ['songName', 'songAuthorName', 'levelAuthorName']) {
+    if (value.metadata[field] !== undefined && typeof value.metadata[field] !== 'string') return false;
+  }
+  if (value.tags !== undefined && (!Array.isArray(value.tags) || !value.tags.every(tag => typeof tag === 'string'))) return false;
+  if (value.versions !== undefined && (!Array.isArray(value.versions) || !value.versions.every(version => {
+    if (!isRecord(version)) return false;
+    if (version.downloadURL !== undefined && typeof version.downloadURL !== 'string') return false;
+    if (version.diffs !== undefined && (!Array.isArray(version.diffs) || !version.diffs.every(diff => {
+      if (!isRecord(diff)) return false;
+      return (diff.difficulty === undefined || typeof diff.difficulty === 'string')
+        && (diff.characteristic === undefined || typeof diff.characteristic === 'string');
+    }))) return false;
+    return true;
+  }))) return false;
+  return value.stats === undefined || isRecord(value.stats);
+}
+
+export function parseSavedSearch(text: string): SavedSearchFile {
+  if (text.length > 25_000_000) throw new Error('This saved search is too large to open in the browser.');
+
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    throw new Error('This file is not valid JSON. Choose a BeatMatch saved search file.');
+  }
+  if (!isRecord(value) || value.format !== 'beatmatch-search' || value.version !== 1) {
+    throw new Error('This is not a supported BeatMatch saved search file.');
+  }
+  if (!Array.isArray(value.tracks) || value.tracks.length === 0 || !value.tracks.every(isImportedTrack)) {
+    throw new Error('The saved search does not contain a valid music library.');
+  }
+  if (!Array.isArray(value.artistMaps) || !value.artistMaps.every(isBeatMap)) {
+    throw new Error('The saved search contains invalid BeatSaver results.');
+  }
+  if (!Array.isArray(value.scannedArtists) || !value.scannedArtists.every(artist => typeof artist === 'string')) {
+    throw new Error('The saved search contains an invalid artist scan list.');
+  }
+  const validFilters: ResultsFilter[] = ['all', 'exact', 'other', 'missing'];
+  if (!validFilters.includes(value.filter as ResultsFilter)) throw new Error('The saved search has an invalid results filter.');
+  if (typeof value.query !== 'string') throw new Error('The saved search has an invalid search phrase.');
+  if (!Array.isArray(value.includedDifficulties) || !value.includedDifficulties.every(item => typeof item === 'string')) {
+    throw new Error('The saved search has invalid difficulty filters.');
+  }
+  if (!Array.isArray(value.selectedGenres) || !value.selectedGenres.every(item => typeof item === 'string')) {
+    throw new Error('The saved search has invalid genre filters.');
+  }
+  if (!['any', '60', '70', '80', '90', '95'].includes(String(value.minimumRating))) {
+    throw new Error('The saved search has an invalid minimum rating.');
+  }
+  if (!isRecord(value.selectedMapIds) || !Object.values(value.selectedMapIds).every(id => typeof id === 'string')) {
+    throw new Error('The saved search has invalid selected map versions.');
+  }
+
+  const uniqueTracks = Array.from(new Map(value.tracks.map(track => [getImportedTrackKey(track), track])).values());
+  const uniqueMaps = Array.from(new Map(value.artistMaps.map(map => [map.id, map])).values());
+  const selectedMapIds = Object.fromEntries(
+    Object.entries(value.selectedMapIds).map(([key, id]) => [key, id as string]),
+  );
+  return {
+    format: 'beatmatch-search',
+    version: 1,
+    savedAt: typeof value.savedAt === 'string' ? value.savedAt : '',
+    libraryFileName: typeof value.libraryFileName === 'string' ? value.libraryFileName : 'Saved library',
+    tracks: uniqueTracks,
+    artistMaps: uniqueMaps,
+    scannedArtists: Array.from(new Set(value.scannedArtists)),
+    filter: value.filter as ResultsFilter,
+    query: value.query,
+    includedDifficulties: Array.from(new Set(value.includedDifficulties)),
+    minimumRating: String(value.minimumRating),
+    selectedGenres: Array.from(new Set(value.selectedGenres)),
+    selectedMapIds,
+  };
 }
 
 function parseCsv(text: string): string[][] {
@@ -138,21 +245,26 @@ type BeatSaverSearchResponse = {
   info?: { total?: number };
 };
 
-export async function searchArtistMaps(
-  artist: string,
-  shouldContinue: () => boolean,
-  onProgress: (page: number, totalPages: number) => void,
-): Promise<BeatMap[]> {
+export type ArtistSearchCallbacks = {
+  shouldContinue: () => boolean;
+  waitUntilActive: () => Promise<boolean>;
+  signal: AbortSignal;
+  onProgress: (page: number, totalPages: number) => void;
+  onMaps: (maps: BeatMap[]) => void;
+};
+
+export async function searchArtistMaps(artist: string, callbacks: ArtistSearchCallbacks): Promise<BeatMap[]> {
   const pageSize = 100;
   const artistKey = normalizeLibraryText(artist);
   const maps = new Map<string, BeatMap>();
   let totalPages = 1;
 
   for (let page = 0; page < totalPages; page++) {
-    if (!shouldContinue()) return [];
+    if (!callbacks.shouldContinue() || !(await callbacks.waitUntilActive())) return Array.from(maps.values());
     const params = new URLSearchParams({ q: artist, pageSize: String(pageSize) });
     const response = await fetch(`https://api.beatsaver.com/search/text/${page}?${params}`, {
       headers: { Accept: 'application/json' },
+      signal: callbacks.signal,
     });
     if (response.status === 429) {
       throw new Error('BeatSaver is rate-limiting searches right now (429). Your completed artist results are safe.');
@@ -160,7 +272,7 @@ export async function searchArtistMaps(
     if (!response.ok) throw new Error(`BeatSaver returned a network error (${response.status}).`);
 
     const body = await response.json() as BeatSaverSearchResponse;
-    if (!shouldContinue()) return [];
+    if (!callbacks.shouldContinue()) return Array.from(maps.values());
     const docs = Array.isArray(body.docs) ? body.docs : [];
     if (page === 0) {
       const total = Number(body.info?.total);
@@ -169,13 +281,15 @@ export async function searchArtistMaps(
         : docs.length >= pageSize ? 2 : 1;
     }
     if (docs.length < pageSize) totalPages = page + 1;
-    onProgress(page + 1, totalPages);
-
+    callbacks.onProgress(page + 1, totalPages);
+    const pageMaps: BeatMap[] = [];
     for (const map of docs) {
       if (normalizeLibraryText(map.metadata?.songAuthorName ?? '') === artistKey) {
         maps.set(map.id, map);
+        pageMaps.push(map);
       }
     }
+    if (pageMaps.length) callbacks.onMaps(pageMaps);
 
     if (page + 1 < totalPages) {
       await new Promise(resolve => window.setTimeout(resolve, 420));
