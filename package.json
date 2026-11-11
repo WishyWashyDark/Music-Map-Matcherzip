@@ -2,16 +2,14 @@
   "name": "workspace",
   "version": "0.0.0",
   "license": "MIT",
-  "scripts": {
-    "preinstall": "sh -c 'rm -f package-lock.json yarn.lock; case \"$npm_config_user_agent\" in pnpm/*) ;; *) echo \"Use pnpm instead\" >&2; exit 1 ;; esac'",
-    "dev": "pnpm --filter @workspace/beatmatch run dev",
-    "build": "pnpm run typecheck && pnpm -r --if-present run build",
-    "typecheck:libs": "tsc --build",
-    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
-  },
   "private": true,
-  "dependencies": {
-    "@replit/connectors-sdk": "^0.4.3"
+  "workspaces": [
+    "artifacts/beatmatch"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @workspace/beatmatch",
+    "build": "npm run typecheck && npm run build -w @workspace/beatmatch",
+    "typecheck": "npm run typecheck -w @workspace/beatmatch"
   },
   "devDependencies": {
     "prettier": "^3.9.10",
