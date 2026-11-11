@@ -29,6 +29,8 @@ export type BeatMap = {
 };
 
 export type ResultsFilter = 'all' | 'exact' | 'other' | 'missing';
+export type DifficultyMatchMode = 'or' | 'and';
+export type SongSortOrder = 'title' | 'artist' | 'rating';
 
 export type SavedSearchFile = {
   format: 'beatmatch-search';
@@ -41,8 +43,10 @@ export type SavedSearchFile = {
   filter: ResultsFilter;
   query: string;
   includedDifficulties: string[];
+  difficultyMatchMode: DifficultyMatchMode;
   minimumRating: string;
   selectedGenres: string[];
+  sortOrder: SongSortOrder;
   selectedMapIds: Record<string, string>;
 };
 
@@ -144,8 +148,16 @@ export function parseSavedSearch(text: string): SavedSearchFile {
   if (!Array.isArray(value.includedDifficulties) || !value.includedDifficulties.every(item => typeof item === 'string')) {
     throw new Error('The saved search has invalid difficulty filters.');
   }
+  const difficultyMatchMode = value.difficultyMatchMode ?? 'or';
+  if (difficultyMatchMode !== 'or' && difficultyMatchMode !== 'and') {
+    throw new Error('The saved search has an invalid difficulty match mode.');
+  }
   if (!Array.isArray(value.selectedGenres) || !value.selectedGenres.every(item => typeof item === 'string')) {
     throw new Error('The saved search has invalid genre filters.');
+  }
+  const sortOrder = value.sortOrder ?? 'title';
+  if (sortOrder !== 'title' && sortOrder !== 'artist' && sortOrder !== 'rating') {
+    throw new Error('The saved search has an invalid song sort order.');
   }
   if (!['any', '60', '70', '80', '90', '95'].includes(String(value.minimumRating))) {
     throw new Error('The saved search has an invalid minimum rating.');
@@ -170,8 +182,10 @@ export function parseSavedSearch(text: string): SavedSearchFile {
     filter: value.filter as ResultsFilter,
     query: value.query,
     includedDifficulties: Array.from(new Set(value.includedDifficulties)),
+    difficultyMatchMode,
     minimumRating: String(value.minimumRating),
     selectedGenres: Array.from(new Set(value.selectedGenres)),
+    sortOrder,
     selectedMapIds,
   };
 }

@@ -6,7 +6,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 import { ArrowUpRight, AudioLines, Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, Download, FileMusic, FolderOpen, Headphones, LockKeyhole, Music2, Pause, Play, Save, Search, ShieldCheck, SlidersHorizontal, Sparkles, Square, Star, Upload, X } from 'lucide-react';
-import { type BeatMap, type ImportedTrack, type ResultsFilter, type SavedSearchFile, getBeatMapTrackKey, getImportedTrackKey, getMapDifficulties, getMapRatingPercent, normalizeLibraryText, parseLibrary, parseSavedSearch, searchArtistMaps } from '@/lib/library';
+import { type BeatMap, type DifficultyMatchMode, type ImportedTrack, type ResultsFilter, type SavedSearchFile, type SongSortOrder, getBeatMapTrackKey, getImportedTrackKey, getMapDifficulties, getMapRatingPercent, normalizeLibraryText, parseLibrary, parseSavedSearch, searchArtistMaps } from '@/lib/library';
 import { ARTIST_MAP_CACHE_TTL_DAYS, getCachedArtistMaps, saveCachedArtistMaps } from '@/lib/artist-map-cache';
 import {
   Route,
@@ -53,7 +53,7 @@ type SongMapGroup = {
   matchedTrack?: ImportedTrack;
 };
 
-function groupMapsBySong(results: ArtistMapResult[], selectedMapIds: Record<string, string>): SongMapGroup[] {
+function groupMapsBySong(results: ArtistMapResult[], selectedMapIds: Record<string, string>, sortOrder: SongSortOrder): SongMapGroup[] {
   const groups = new Map<string, ArtistMapResult[]>();
   for (const result of results) {
     const songKey = getBeatMapTrackKey(result.map);
@@ -77,9 +77,23 @@ function groupMapsBySong(results: ArtistMapResult[], selectedMapIds: Record<stri
       matchedTrack: ranked[0]?.matchedTrack,
     };
   }).sort((a, b) => {
-    const titleA = a.selected.map.metadata.songName || a.selected.map.name;
-    const titleB = b.selected.map.metadata.songName || b.selected.map.name;
-    return titleA.localeCompare(titleB);
+    const mapA = a.selected.map;
+    const mapB = b.selected.map;
+    if (sortOrder === 'artist') {
+      const artistA = mapA.metadata.songAuthorName ?? '';
+      const artistB = mapB.metadata.songAuthorName ?? '';
+      return artistA.localeCompare(artistB) || (mapA.metadata.songName || mapA.name).localeCompare(mapB.metadata.songName || mapB.name);
+    }
+    if (sortOrder === 'rating') {
+      const ratingA = getMapRatingPercent(mapA) ?? -1;
+      const ratingB = getMapRatingPercent(mapB) ?? -1;
+      return ratingB - ratingA
+        || (mapA.metadata.songName || mapA.name).localeCompare(mapB.metadata.songName || mapB.name)
+        || (mapA.metadata.songAuthorName ?? '').localeCompare(mapB.metadata.songAuthorName ?? '');
+    }
+    const titleA = mapA.metadata.songName || mapA.name;
+    const titleB = mapB.metadata.songName || mapB.name;
+    return titleA.localeCompare(titleB) || (mapA.metadata.songAuthorName ?? '').localeCompare(mapB.metadata.songAuthorName ?? '');
   });
 }
 
@@ -92,8 +106,10 @@ function Home() {
   const [query, setQuery] = useState('');
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [includedDifficulties, setIncludedDifficulties] = useState<string[]>([]);
+  const [difficultyMatchMode, setDifficultyMatchMode] = useState<DifficultyMatchMode>('or');
   const [minimumRating, setMinimumRating] = useState('any');
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
+  const [sortOrder, setSortOrder] = useState<SongSortOrder>('title');
   const [dragging, setDragging] = useState(false);
   const [importError, setImportError] = useState('');
   const [scanError, setScanError] = useState('');
@@ -142,7 +158,10 @@ function Home() {
       if (hasAdvancedFilters) {
         if (includedDifficulties.length > 0) {
           const mapDifficulties = getMapDifficulties(map);
-          if (!includedDifficulties.some(difficulty => mapDifficulties.includes(difficulty))) return false;
+          const matchesDifficulty = difficultyMatchMode === 'and'
+            ? includedDifficulties.every(difficulty => mapDifficulties.includes(difficulty))
+            : includedDifficulties.some(difficulty => mapDifficulties.includes(difficulty));
+          if (!matchesDifficulty) return false;
         }
         if (minimumRating !== 'any') {
           const rating = getMapRatingPercent(map);
@@ -152,9 +171,9 @@ function Home() {
       }
       return !needle || `${map.name} ${map.metadata.songName ?? ''} ${map.metadata.songAuthorName ?? ''} ${map.metadata.levelAuthorName ?? ''} ${(map.tags ?? []).join(' ')} ${matchedTrack?.title ?? ''}`.toLowerCase().includes(needle);
     });
-  }, [filter, hasAdvancedFilters, includedDifficulties, mapResults, minimumRating, query, selectedGenres]);
-  const allSongGroups = useMemo(() => groupMapsBySong(mapResults, selectedMapIds), [mapResults, selectedMapIds]);
-  const filteredSongGroups = useMemo(() => groupMapsBySong(filteredMapResults, selectedMapIds), [filteredMapResults, selectedMapIds]);
+  }, [difficultyMatchMode, filter, hasAdvancedFilters, includedDifficulties, mapResults, minimumRating, query, selectedGenres]);
+  const allSongGroups = useMemo(() => groupMapsBySong(mapResults, selectedMapIds, sortOrder), [mapResults, selectedMapIds, sortOrder]);
+  const filteredSongGroups = useMemo(() => groupMapsBySong(filteredMapResults, selectedMapIds, sortOrder), [filteredMapResults, selectedMapIds, sortOrder]);
   const exactSongCount = allSongGroups.filter(group => group.matchedTrack).length;
   const otherSongCount = Math.max(0, allSongGroups.length - exactSongCount);
   const missingTracks = tracks.filter(track => scannedArtistKeys.has(normalizeLibraryText(track.artist)) && !exactTrackKeys.has(getImportedTrackKey(track)));
@@ -164,6 +183,12 @@ function Home() {
     const needle = query.trim().toLowerCase();
     return missingTracks.filter(track => !needle || `${track.title} ${track.artist} ${track.album ?? ''}`.toLowerCase().includes(needle));
   }, [missingTracks, query]);
+  const scopedSongCount = filter === 'exact' ? exactSongCount : filter === 'other' ? otherSongCount : allSongGroups.length;
+  const resultCount = filter === 'missing' ? filteredMissingTracks.length : filteredSongGroups.length;
+  const resultScopeCount = filter === 'missing' ? missingTracks.length : scopedSongCount;
+  const resultsCountLabel = filter === 'missing'
+    ? query.trim() ? `Showing ${resultCount} of ${resultScopeCount} unmatched songs` : `${resultCount} unmatched songs`
+    : query.trim() || hasAdvancedFilters ? `Showing ${resultCount} of ${resultScopeCount} songs` : `${resultCount} songs`;
 
   function resolvePauseWaiters() {
     pauseWaiters.current.forEach(resolve => resolve());
@@ -231,8 +256,10 @@ function Home() {
       setFilter(snapshot.filter);
       setQuery(snapshot.query);
       setIncludedDifficulties(snapshot.includedDifficulties);
+      setDifficultyMatchMode(snapshot.difficultyMatchMode);
       setMinimumRating(snapshot.minimumRating);
       setSelectedGenres(snapshot.selectedGenres);
+      setSortOrder(snapshot.sortOrder);
       setScanCurrent('');
       setScanError('');
       setImportError('');
@@ -257,8 +284,10 @@ function Home() {
       filter,
       query,
       includedDifficulties,
+      difficultyMatchMode,
       minimumRating,
       selectedGenres,
+      sortOrder,
       selectedMapIds,
     };
     const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
@@ -392,6 +421,7 @@ function Home() {
 
   function clearAdvancedFilters() {
     setIncludedDifficulties([]);
+    setDifficultyMatchMode('or');
     setMinimumRating('any');
     setSelectedGenres([]);
     setSelectedMapIds({});
@@ -479,11 +509,22 @@ function Home() {
                   <button className={`refinement-toggle${filtersOpen ? ' is-open' : ''}`} type="button" onClick={() => setFiltersOpen(open => !open)} aria-expanded={filtersOpen} aria-controls="map-refinement-filters" data-testid="button-open-map-filters">
                     <SlidersHorizontal size={13} /> Filters{activeAdvancedFilterCount > 0 && <span className="filter-count">{activeAdvancedFilterCount}</span>}<ChevronDown size={13} className="filter-chevron" />
                   </button>
+                  {filter !== 'missing' && <label className="sort-control"><span>Sort</span><select className="sort-select" aria-label="Sort songs" value={sortOrder} onChange={event => setSortOrder(event.target.value as SongSortOrder)} data-testid="select-sort-songs">
+                    <option value="artist">Band name A–Z</option>
+                    <option value="title">Song name A–Z</option>
+                    <option value="rating">Rating high–low</option>
+                  </select></label>}
                 </div>
                 {filtersOpen && <div className="refinement-panel" id="map-refinement-filters">
                   <div className="refinement-group">
-                    <div className="refinement-heading">Included difficulties <span>{includedDifficulties.length ? `${includedDifficulties.length} selected` : 'Any'}</span></div>
-                    <p className="refinement-help">Show maps that include any selected level. Leave all unchecked for any difficulty.</p>
+                    <div className="difficulty-heading-row">
+                      <div className="refinement-heading">Included difficulties <span>{includedDifficulties.length ? `${includedDifficulties.length} selected` : 'Any'}</span></div>
+                      <div className="difficulty-mode-toggle" role="group" aria-label="Difficulty match mode">
+                        <button type="button" aria-pressed={difficultyMatchMode === 'or'} className={difficultyMatchMode === 'or' ? 'active' : ''} onClick={() => setDifficultyMatchMode('or')} data-testid="button-difficulty-mode-or">OR</button>
+                        <button type="button" aria-pressed={difficultyMatchMode === 'and'} className={difficultyMatchMode === 'and' ? 'active' : ''} onClick={() => setDifficultyMatchMode('and')} data-testid="button-difficulty-mode-and">AND</button>
+                      </div>
+                    </div>
+                    <p className="refinement-help">Show maps that include {difficultyMatchMode === 'and' ? 'all' : 'any'} selected levels. Leave all unchecked for any difficulty.</p>
                     <div className="checkbox-options difficulty-options">
                       {DIFFICULTY_OPTIONS.map(option => <label className="filter-checkbox" key={option.value}>
                         <input type="checkbox" checked={includedDifficulties.includes(option.value)} onChange={() => toggleDifficulty(option.value)} />
@@ -509,7 +550,7 @@ function Home() {
                     </div> : <div className="genre-empty">Tags appear as map results are found.</div>}
                   </div>
                   <div className="refinement-actions">
-                    <span>{filter === 'missing' ? 'Map filters apply to BeatSaver results, not unmatched library songs.' : 'Difficulty and genre choices include a map if any selected option matches.'}</span>
+                    <span>{filter === 'missing' ? 'Map filters apply to BeatSaver results, not unmatched library songs.' : `Difficulty uses ${difficultyMatchMode.toUpperCase()} matching; any selected genre can match.`}</span>
                     <button className="link-button" type="button" onClick={clearAdvancedFilters} disabled={!hasAdvancedFilters}>Clear filters</button>
                   </div>
                 </div>}
@@ -531,6 +572,7 @@ function Home() {
               </div>}
               {scanError && <div className="alert-box warning" role="alert" data-testid="status-scan-partial"><CircleAlert size={15} /><span>{scanError} {pendingArtistCount > 0 && !scanError.startsWith('Search stopped') && 'You can continue once the catalog is ready.'}</span></div>}
               {cacheNotice && <div className="alert-box warning" role="status" data-testid="status-cache-warning"><CircleAlert size={15} /><span>{cacheNotice}</span></div>}
+              {tracks.length > 0 && <div className="results-count" role="status" data-testid="text-filtered-song-count">{resultsCountLabel}</div>}
               {tracks.length === 0 ? <div className="empty-state">
                 <div className="empty-orbit"><Music2 size={24} /></div><strong>Your library is the setlist.</strong>
                 <p>Import an Apple Music XML export or a simple CSV to see which songs have maps waiting for you.</p>
@@ -598,7 +640,7 @@ function Home() {
                     </div>
                   </div>;
                 })}
-                {filteredSongGroups.length < allSongGroups.length && <div className="results-foot"><span>Showing {filteredSongGroups.length} of {allSongGroups.length} songs</span><button className="link-button" onClick={() => { setQuery(''); setFilter('all'); clearAdvancedFilters(); }}>Show all songs</button></div>}
+                {filteredSongGroups.length < allSongGroups.length && <div className="results-foot"><span></span><button className="link-button" onClick={() => { setQuery(''); setFilter('all'); clearAdvancedFilters(); }}>Show all songs</button></div>}
               </div>}
               {tracks.length > 0 && scannedArtistCount === artists.length && artists.length > 0 && !scanning && !scanError && <div className="results-foot" data-testid="status-scan-complete"><span><ShieldCheck size={13} style={{ verticalAlign: 'middle', marginRight: 5, color: '#368267' }} />All artists checked · every map by those artists is included</span><span>{exactTrackCount} exact song matches</span></div>}
             </section>
