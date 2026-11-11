@@ -250,8 +250,87 @@ export type ArtistSearchCallbacks = {
   waitUntilActive: () => Promise<boolean>;
   signal: AbortSignal;
   onProgress: (page: number, totalPages: number) => void;
+  onRateLimit?: (retryInMs: number) => void;
   onMaps: (maps: BeatMap[]) => void;
 };
+
+const MAX_RATE_LIMIT_RETRIES = 5;
+let beatSaverRateLimitedUntil = 0;
+
+function getRetryAfterMs(response: Response) {
+  const retryAfter = response.headers.get('Retry-After');
+  if (!retryAfter) return null;
+
+  const seconds = Number(retryAfter);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+
+  const retryAt = Date.parse(retryAfter);
+  return Number.isFinite(retryAt) ? Math.max(0, retryAt - Date.now()) : null;
+}
+
+function delayWithAbort(ms: number, signal: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new DOMException('The search was cancelled.', 'AbortError'));
+      return;
+    }
+
+    const finish = () => {
+      signal.removeEventListener('abort', abort);
+      resolve();
+    };
+    const abort = () => {
+      window.clearTimeout(timer);
+      signal.removeEventListener('abort', abort);
+      reject(new DOMException('The search was cancelled.', 'AbortError'));
+    };
+    const timer = window.setTimeout(finish, ms);
+    signal.addEventListener('abort', abort, { once: true });
+  });
+}
+
+async function waitForRateLimit(callbacks: ArtistSearchCallbacks) {
+  while (beatSaverRateLimitedUntil > Date.now()) {
+    if (!callbacks.shouldContinue() || !(await callbacks.waitUntilActive())) return false;
+    await delayWithAbort(
+      Math.min(250, beatSaverRateLimitedUntil - Date.now()),
+      callbacks.signal,
+    );
+  }
+  return callbacks.shouldContinue();
+}
+
+async function fetchSearchPage(url: string, callbacks: ArtistSearchCallbacks) {
+  let retries = 0;
+  while (callbacks.shouldContinue()) {
+    if (!(await callbacks.waitUntilActive()) || !(await waitForRateLimit(callbacks))) return null;
+
+    const requestStartedAt = Date.now();
+    const response = await fetch(url, {
+      headers: { Accept: 'application/json' },
+      signal: callbacks.signal,
+    });
+
+    if (response.status !== 429) {
+      if (response.ok && requestStartedAt >= beatSaverRateLimitedUntil) {
+        beatSaverRateLimitedUntil = 0;
+      }
+      return response;
+    }
+
+    retries += 1;
+    const backoffMs = Math.min(60_000, 1_000 * (2 ** (retries - 1)));
+    const retryAfterMs = getRetryAfterMs(response);
+    const waitMs = Math.max(1_000, retryAfterMs ?? backoffMs);
+    beatSaverRateLimitedUntil = Math.max(beatSaverRateLimitedUntil, Date.now() + waitMs);
+    callbacks.onRateLimit?.(beatSaverRateLimitedUntil - Date.now());
+
+    if (retries > MAX_RATE_LIMIT_RETRIES) {
+      throw new Error('BeatSaver is still rate-limiting requests. The scan stopped after several retries; completed artist results are safe to save and resume.');
+    }
+  }
+  return null;
+}
 
 export async function searchArtistMaps(artist: string, callbacks: ArtistSearchCallbacks): Promise<BeatMap[]> {
   const pageSize = 100;
@@ -262,13 +341,8 @@ export async function searchArtistMaps(artist: string, callbacks: ArtistSearchCa
   for (let page = 0; page < totalPages; page++) {
     if (!callbacks.shouldContinue() || !(await callbacks.waitUntilActive())) return Array.from(maps.values());
     const params = new URLSearchParams({ q: artist, pageSize: String(pageSize) });
-    const response = await fetch(`https://api.beatsaver.com/search/text/${page}?${params}`, {
-      headers: { Accept: 'application/json' },
-      signal: callbacks.signal,
-    });
-    if (response.status === 429) {
-      throw new Error('BeatSaver is rate-limiting searches right now (429). Your completed artist results are safe.');
-    }
+    const response = await fetchSearchPage(`https://api.beatsaver.com/search/text/${page}?${params}`, callbacks);
+    if (!response) return Array.from(maps.values());
     if (!response.ok) throw new Error(`BeatSaver returned a network error (${response.status}).`);
 
     const body = await response.json() as BeatSaverSearchResponse;

@@ -7,6 +7,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 import { ArrowUpRight, AudioLines, Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, Download, FileMusic, FolderOpen, Headphones, LockKeyhole, Music2, Pause, Play, Save, Search, ShieldCheck, SlidersHorizontal, Sparkles, Square, Star, Upload, X } from 'lucide-react';
 import { type BeatMap, type ImportedTrack, type ResultsFilter, type SavedSearchFile, getBeatMapTrackKey, getImportedTrackKey, getMapDifficulties, getMapRatingPercent, normalizeLibraryText, parseLibrary, parseSavedSearch, searchArtistMaps } from '@/lib/library';
+import { ARTIST_MAP_CACHE_TTL_DAYS, getCachedArtistMaps, saveCachedArtistMaps } from '@/lib/artist-map-cache';
 import {
   Route,
   Switch,
@@ -100,12 +101,15 @@ function Home() {
   const [scanning, setScanning] = useState(false);
   const [scanPaused, setScanPaused] = useState(false);
   const [scanCurrent, setScanCurrent] = useState('');
+  const [cacheNotice, setCacheNotice] = useState('');
+  const [cacheHitCount, setCacheHitCount] = useState(0);
   const [selectedMapIds, setSelectedMapIds] = useState<Record<string, string>>({});
   const scanRun = useRef(0);
   const scanAbortController = useRef<AbortController | null>(null);
   const stopRequested = useRef(false);
   const scanPausedRef = useRef(false);
   const pauseWaiters = useRef(new Set<() => void>());
+  const cacheUnavailable = useRef(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const savedSearchFileRef = useRef<HTMLInputElement>(null);
 
@@ -277,6 +281,7 @@ function Home() {
     setPauseState(false);
     setScanning(true);
     setScanError('');
+    setCacheHitCount(0);
     const completed = new Set(scannedArtists);
     const queue = artists.filter(artist => !completed.has(normalizeLibraryText(artist)));
     let cursor = 0;
@@ -287,24 +292,54 @@ function Home() {
         const artist = queue[cursor++];
         const artistKey = normalizeLibraryText(artist);
         setScanCurrent(artist);
+        let usedCache = false;
         try {
-          await searchArtistMaps(artist, {
-            shouldContinue: () => scanRun.current === runId && !stopRequested.current,
-            waitUntilActive: () => waitUntilScanResumes(runId),
-            signal: controller.signal,
-            onProgress: (page, totalPages) => setScanCurrent(`${artist} · page ${page} of ${totalPages}`),
-            onMaps: maps => {
-              if (scanRun.current !== runId) return;
-              setArtistMaps(current => {
-                const byId = new Map(current.map(map => [map.id, map]));
-                maps.forEach(map => byId.set(map.id, map));
-                return Array.from(byId.values());
-              });
-            },
-          });
+          let cachedMaps: BeatMap[] | null = null;
+          if (!cacheUnavailable.current) {
+            try {
+              cachedMaps = await getCachedArtistMaps(artist);
+            } catch {
+              cacheUnavailable.current = true;
+              setCacheNotice('The local artist cache is unavailable. This scan will continue, but future scans may need to fetch these artists again.');
+            }
+          }
+          if (scanRun.current !== runId || stopRequested.current) return;
+
+          const addMaps = (maps: BeatMap[]) => {
+            if (scanRun.current !== runId) return;
+            setArtistMaps(current => {
+              const byId = new Map(current.map(map => [map.id, map]));
+              maps.forEach(map => byId.set(map.id, map));
+              return Array.from(byId.values());
+            });
+          };
+
+          if (cachedMaps !== null) {
+            usedCache = true;
+            setCacheHitCount(current => current + 1);
+            addMaps(cachedMaps);
+          } else {
+            const maps = await searchArtistMaps(artist, {
+              shouldContinue: () => scanRun.current === runId && !stopRequested.current,
+              waitUntilActive: () => waitUntilScanResumes(runId),
+              signal: controller.signal,
+              onProgress: (page, totalPages) => setScanCurrent(`${artist} · page ${page} of ${totalPages}`),
+              onRateLimit: retryInMs => setScanCurrent(`${artist} · BeatSaver asked us to wait ${Math.ceil(retryInMs / 1000)}s`),
+              onMaps: addMaps,
+            });
+            if (scanRun.current !== runId || stopRequested.current) return;
+            if (!cacheUnavailable.current) {
+              try {
+                await saveCachedArtistMaps(artist, maps);
+              } catch {
+                cacheUnavailable.current = true;
+                setCacheNotice('The local artist cache is unavailable. This scan will continue, but future scans may need to fetch these artists again.');
+              }
+            }
+          }
           if (scanRun.current !== runId || stopRequested.current) return;
           setScannedArtists(current => current.includes(artistKey) ? current : [...current, artistKey]);
-          await new Promise(resolve => window.setTimeout(resolve, 500));
+          if (!usedCache) await new Promise(resolve => window.setTimeout(resolve, 500));
         } catch (error) {
           if (scanRun.current !== runId || stopRequested.current || (error instanceof DOMException && error.name === 'AbortError')) break;
           stopped = error instanceof Error ? error.message : 'The connection to BeatSaver was interrupted.';
@@ -483,7 +518,7 @@ function Home() {
                 {scanPaused ? <Pause size={19} className="scan-paused-icon" /> : <span className="scan-spin" />}
                 <div className="scan-copy">
                   <strong>{scanPaused ? 'Search paused' : 'Searching for your artists'}</strong>
-                  <span>Checking {scanCurrent || 'the next artist'} · {scannedArtistCount} of {artists.length} artists complete</span>
+                  <span>Checking {scanCurrent || 'the next artist'} · {scannedArtistCount} of {artists.length} artists complete{cacheHitCount > 0 ? ` · ${cacheHitCount} reused from the ${ARTIST_MAP_CACHE_TTL_DAYS}-day cache` : ''}</span>
                   <div className="progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={artists.length ? Math.round(scannedArtistCount / artists.length * 100) : 0}>
                     <div className="progress-fill" style={{ width: `${artists.length ? Math.min(100, scannedArtistCount / artists.length * 100) : 0}%` }} />
                   </div>
@@ -495,6 +530,7 @@ function Home() {
                 </div>
               </div>}
               {scanError && <div className="alert-box warning" role="alert" data-testid="status-scan-partial"><CircleAlert size={15} /><span>{scanError} {pendingArtistCount > 0 && !scanError.startsWith('Search stopped') && 'You can continue once the catalog is ready.'}</span></div>}
+              {cacheNotice && <div className="alert-box warning" role="status" data-testid="status-cache-warning"><CircleAlert size={15} /><span>{cacheNotice}</span></div>}
               {tracks.length === 0 ? <div className="empty-state">
                 <div className="empty-orbit"><Music2 size={24} /></div><strong>Your library is the setlist.</strong>
                 <p>Import an Apple Music XML export or a simple CSV to see which songs have maps waiting for you.</p>
