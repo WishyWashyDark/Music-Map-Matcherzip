@@ -507,6 +507,7 @@
 .map-download-link:hover {background:#185f52;border-color:#185f52;transform:translateY(-1px);}
 .map-download-link:focus-visible {outline:2px solid #77a995;outline-offset:2px;}
 .download-unavailable {color:#999b92;font-size:9px;text-align:right;}
+@media(min-width:681px){.table-head,.track-row{grid-template-columns:minmax(0,calc(30% + 40px)) minmax(0,1fr) minmax(130px,155px)}.map-download-link{min-height:36px;padding:7px 8px;border-color:#c9ddd1;background:#edf4ee;color:#28684f;font-size:10px;font-weight:750;box-shadow:none}.map-download-link:hover{background:#e1eee4;border-color:#a9cbb8;color:#185f52}}
 .version-switcher {display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px;padding-top:8px;border-top:1px solid #efebe2;}
 .version-position {color:#777f76;font:600 9px var(--app-font-mono);}
 .version-controls {display:flex;gap:5px;}
