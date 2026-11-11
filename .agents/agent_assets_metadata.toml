@@ -42,3 +42,17 @@ mtime_ms = 1794288421325
 storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:f2fbbd67-a7f6-4bae-9af7-b54549a3ce0c/1092d38e-901d-4356-b7de-add1afe63091/ae0b1aac-c7ad-49b7-93db-35f1b8850ae8"
 storage_version_token = "1794288473461108"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "h-Y3abfhkQtzSU9ZgDUpS"
+uri = "file://generated-artifacts/beatmatch-static-site.zip"
+type = "unspecified"
+title = "BeatMatch static website ZIP"
+description = "Extract and upload the files to your domain’s web root, or to a subfolder with a trailing slash. No backend or database required."
+logical_id = "6e210dcc-e72f-4747-9e8c-78a8d16fe053"
+content_hash = "sha256:eca19e9ccc8e16a2c9c8c5a0f13b61f0090d0911968b00562b4eada3eda0b14b"
+size = 138086
+mtime_ms = 1794355981208
+storage_uri = "gcs://replit-rams-assets-kira/rams/assets/repl:9cb6cb2e-7491-45ce-beb2-622bb84ce22d/6e210dcc-e72f-4747-9e8c-78a8d16fe053/cdc7f166-e2d6-4d46-ad0f-fdfca78da18e"
+storage_version_token = "1794356018040402"
+content_type = "application/octet-stream"
